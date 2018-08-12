@@ -1,0 +1,13 @@
+{
+    "name": "makepost/corenote",
+    "description": "Plain-text note management in a single PHP file",
+    "type": "project",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "makepost",
+            "email": "makepost@firemail.cc"
+        }
+    ],
+    "require": {}
+}
