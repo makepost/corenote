@@ -323,7 +323,7 @@ window.fetch = function(url, options) {
         .catch(function(error) {
             var now = Date.now();
 
-            if (prevAlert !== error.message || now - alertedAt >= 2e4) {
+            if (prevAlert !== error.message || now - alertedAt >= 6e4) {
                 alertedAt = now;
                 prevAlert = error.message;
 
@@ -375,13 +375,15 @@ function currentNote() {
         }
     }
 
-    for (var i = 0; i < notes.length; i++) {
-        if (notes[i].dir === dir) {
-            return notes[i];
-        }
-    }
-
-    return notes.length ? notes[0] : new Note();
+    return notes
+        .filter(function(x) {
+            return x = x.dir === dir;
+        })
+        .sort(function(a, b) {
+            return Math.abs(a.createdAt - createdAt) -
+                Math.abs(b.createdAt - createdAt);
+        })
+        [0] || (notes.length ? notes[0] : new Note());
 }
 
 function render() {
@@ -451,6 +453,10 @@ $delete.addEventListener("click", function() {
     $delete.disabled = true;
     timeout = 0;
 
+    localStorage.removeItem(
+        currentNote().dir + "/" + currentNote().createdAt + ".txt"
+    );
+
     fetch(noteService.apiBase + "/notes", {
         body: JSON.stringify([currentNote()]),
         method: "DELETE"
@@ -507,6 +513,8 @@ $note.addEventListener(
             .split("\n")[0]
             .replace(/^\.+|\.+$|\.+[\\\/]+|[\\\/]+\.+/g, "");
 
+        localStorage[note.dir + "/" + note.createdAt + ".txt"] = note.value;
+
         fetch(noteService.apiBase + "/notes", {
             body: JSON.stringify([note]),
             method: "POST"
@@ -523,21 +531,27 @@ $note.addEventListener(
 
                 var undos = noteService.undos;
 
+                var deleting = noteService.notes
+                    .filter(function (x) {
+                        return x.dir === note.dir;
+                    })
+                    .filter(function (x, i, xs) {
+                        return (
+                            i > 1 &&
+                            xs[i - 1].createdAt - x.createdAt <=
+                            noteService.undoAge &&
+                            --undos <= 0
+                        );
+                    });
+
+                for (var i = 0; i < deleting.length; i++) {
+                    localStorage.removeItem(
+                        deleting[i].dir + "/" + deleting[i].createdAt + ".txt"
+                    );
+                }
+
                 return fetch(noteService.apiBase + "/notes", {
-                    body: JSON.stringify(
-                        noteService.notes
-                            .filter(function (x) {
-                                return x.dir === note.dir;
-                            })
-                            .filter(function (x, i, xs) {
-                                return (
-                                    i > 1 &&
-                                    xs[i - 1].createdAt - x.createdAt <=
-                                        noteService.undoAge &&
-                                    --undos <= 0
-                                );
-                            })
-                    ),
+                    body: JSON.stringify(deleting),
                     method: "DELETE"
                 })
             })
@@ -545,8 +559,6 @@ $note.addEventListener(
                 return x.json();
             })
             .then(function(_) {
-                noteService.createdAt = note.createdAt;
-                noteService.dir = note.dir;
                 noteService.notes = _;
 
                 render();
@@ -554,7 +566,32 @@ $note.addEventListener(
     })
 );
 
-fetch(noteService.apiBase + "/notes")
+for (var key in localStorage) {
+    if (!localStorage.hasOwnProperty(key)) {
+        continue;
+    }
+
+    var matches = /^(.+)\/(\d+)\.txt$/.exec(key);
+
+    if (!matches) {
+        continue;
+    }
+
+    noteService.notes.push({
+        createdAt: Number(matches[2]),
+        dir: matches[1],
+        value: localStorage[key]
+    });
+}
+
+noteService.notes = noteService.notes.sort(function(a, b) {
+    return b.createdAt - a.createdAt;
+});
+
+fetch(noteService.apiBase + "/notes", {
+    body: JSON.stringify(noteService.notes),
+    method: "POST"
+})
     .then(function(x) {
         return x.json();
     })
@@ -567,5 +604,10 @@ fetch(noteService.apiBase + "/notes")
 
         render();
         renderNote();
+
+        for (var i = 0; i < _.length; i++) {
+            var x = _[i];
+            localStorage[x.dir + "/" + x.createdAt + ".txt"] = x.value;
+        }
     });
 </script>
